@@ -136,8 +136,11 @@ class Tetromino:
 class I_Piece(Tetromino):
     def __init__(self, x, y, color, tile_size, board):
         Tetromino.__init__(self, x, y, color,tile_size, board)
-        self.pieces = [ [None, None, None, None, None] ] + [[None, None, Block(color, tile_size, board,
-                                            solid=True), None, None]]*4
+        self.pieces = [ [None, None, None, None],
+                        [None, None, None, None],
+                        [Block(color, tile_size, board, solid=True)]*4,
+                        [None, None, None, None]
+                      ]
 class L_Piece(Tetromino):
     def __init__(self, x, y, color, tile_size, board):
         Tetromino.__init__(self, x, y, color,tile_size, board)
@@ -190,7 +193,7 @@ class T_Piece(Tetromino):
 
 class Board:
     def __init__(self, x, y, width, height, tile_size, screen, starting_level,
-                 queue_length = 1, ghost=True):
+                 queue_length = 4, ghost=True):
         self.x = x
         self.y = y
         self.width = width
@@ -381,63 +384,63 @@ class Board:
 
 
     def draw(self):
-        info_y = self.y + self.tile_size*(self.height) + 20
-        font_size = 20
+        
+        def render_piece_queue(pieces, starting_col):
+            current_y = starting_col
+            for i, piece in enumerate(pieces):
+                piece.y = current_y
+                top = min([el[0] for el in piece.get_piece_locations()]) - current_y
+                piece.y -= top
+                piece.y += 1
+                if len(piece.pieces) == 4:
+                    piece.x = self.width + 0.5 
+                else:
+                    piece.x = self.width
+                piece.draw()
+                current_y = max([el[0] for el in piece.get_piece_locations()]) + 1
+
+
+
 
         # Draw Border
         AAfilledRoundedRect(self.screen, (self.x-6,
-                                          self.y-6,self.width*self.tile_size +
-                                          12,
-                                             self.height*self.tile_size + 12),
-                            (191, 205, 224))
-
-        # Draw next piece box
-        AAfilledRoundedRect(self.screen,
-                            (self.x + self.tile_size*(self.width),
-                             self.y - 6,
-                             self.tile_size*5,
-                             self.tile_size*7),
+                                          self.y-6,
+                                          (self.width+5)*self.tile_size + 6,
+                                          self.height*self.tile_size + 12
+                                         ),
                             (191, 205, 224)
-                            )
+                           )
+
+        # Font settings
+        info_y = self.y + self.tile_size*(self.height) + 20
+        font_size = 20
         myfont = pygame.font.Font(os.path.join('NotoSans-Regular.ttf'),
                                   font_size)
+
+        # Draw next piece box
         text = myfont.render('Next Piece', True, (0,0,0))
         self.screen.blit(text, (self.x + self.tile_size*(self.width) + 30,
                            self.y + 5)
                     )
-        for i, piece in enumerate(self.piece_queue):
-            if len(piece.pieces) == 4:
-                piece.x = self.width + 0.5 
-                piece.y = i*4 + 2
-            else:
-                piece.y = i*4 + 1
-                piece.x = self.width
-            piece.draw()
-
-
+        render_piece_queue(self.piece_queue, 1)
+        
 
         # Draw hold box
-        AAfilledRoundedRect(self.screen,
-                            (self.x + self.tile_size*(self.width),
-                             self.y + self.tile_size*(self.height-7),
-                             self.tile_size*5,
-                             self.tile_size*7 + 6),
-                            (191, 205, 224)
-                            )
         text = myfont.render('Hold', True, (0,0,0))
         self.screen.blit(text, (self.x + self.tile_size*(self.width) + 55,
-                           self.y + self.tile_size*(self.height - 7) + 5)
+                           self.y + self.tile_size*(self.height - 6) + 5)
                     )
+        # Divider line
+        pygame.draw.rect(self.screen, (0, 0, 0), (self.x + self.tile_size*(self.width),
+                                       self.y + self.tile_size*(self.height -
+                                                                6) - 10,
+                                       self.tile_size*5,
+                                       2
+                                      )
+                        )
         if self.held_piece:
-            if len(self.held_piece.pieces) == 4:
-                self.held_piece.x = self.width + 0.5
-                self.held_piece.y = self.height - 5
-            else:
-                self.held_piece.x = self.width
-                self.held_piece.y = self.height-6
-            self.held_piece.draw()
-
-
+            render_piece_queue([self.held_piece], self.height-5)
+            
 
         # Draw info box
         AAfilledRoundedRect(self.screen,

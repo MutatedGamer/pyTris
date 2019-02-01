@@ -16,10 +16,8 @@
 6. Hold with the `spacebar`
 
 ### To-Do
-1. Implement level progression
-2. Implement score
-3. Give visual indicator of clearing lines
-4. Make prettier board
-5. Make UI better
-6. Add menus possibly?
-7. Add controller support
+1. Give visual indicator of clearing lines
+2. Make UI better
+3. Add menus possibly?
+4. Add controller support
+5. Add "lock delay" when piece touches bottom where you can still rotate/move piece
