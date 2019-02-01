@@ -13,6 +13,7 @@
 3. Make the piece fall faster by holding down array key
 4. Rotate CW with the `r` key
 5. Rotate CCW with the `q` key
+6. Hold with the `spacebar`
 
 ### To-Do
 1. Implement level progression

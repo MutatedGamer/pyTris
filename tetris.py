@@ -201,6 +201,10 @@ class Board:
         self.score = 0
 
 
+        self.held = False
+        self.held_piece = None
+
+
         self.lines_until_level_up = 10
 
         self.tile_size = tile_size
@@ -215,6 +219,16 @@ class Board:
             self.queue_new_piece()
 
         self.get_new_piece()
+
+    def hold(self):
+        if not self.held:
+            if self.held_piece:
+                self.held_piece, self.current_piece = self.current_piece, self.held_piece
+                self.reset_piece_position()
+            else:
+                self.held_piece = self.current_piece
+                self.get_new_piece()
+            self.held = True
 
     def update(self):
         self.ticks += 1
@@ -329,22 +343,28 @@ class Board:
                                      self))
 
     def get_new_piece(self):
+        if self.held:
+            self.held = False
         self.current_piece = self.piece_queue.pop(0)
+        self.reset_piece_position()
+        self.current_piece.tile_size = self.tile_size
+        self.queue_new_piece()
+
+    def reset_piece_position(self):
         self.current_piece.x = 3
         if len(self.current_piece.pieces) == 4:
             self.current_piece.y = -3
         else:
             self.current_piece.y = -4
-        self.current_piece.tile_size = self.tile_size
-        self.queue_new_piece()
+        
 
     def would_piece_fit(self, offset_x, offset_y):
         for (y,x) in self.current_piece.get_piece_locations():
+            if x + offset_x >= self.width or x + offset_x < 0:
+                return False
             if y + offset_y < 0:
                 continue
             if y + offset_y >= self.height:
-                return False
-            if x + offset_x >= self.width or x + offset_x < 0:
                 return False
             if self.tiles[y + offset_y][x + offset_x].is_solid():
                 return False
@@ -377,6 +397,17 @@ class Board:
         self.screen.blit(text, (self.x + self.tile_size*(self.width) + 30,
                            self.y + 5)
                     )
+        for i, piece in enumerate(self.piece_queue):
+            if len(piece.pieces) == 4:
+                piece.x = self.width + 0.5 
+                piece.y = i*4 + 2
+            else:
+                piece.y = i*4 + 1
+                piece.x = self.width
+            piece.draw()
+
+
+
         # Draw hold box
         AAfilledRoundedRect(self.screen,
                             (self.x + self.tile_size*(self.width),
@@ -389,6 +420,16 @@ class Board:
         self.screen.blit(text, (self.x + self.tile_size*(self.width) + 55,
                            self.y + self.tile_size*(self.height - 7) + 5)
                     )
+        if self.held_piece:
+            if len(self.held_piece.pieces) == 4:
+                self.held_piece.x = self.width + 0.5
+                self.held_piece.y = self.height - 5
+            else:
+                self.held_piece.x = self.width
+                self.held_piece.y = self.height-6
+            self.held_piece.draw()
+
+
 
         # Draw info box
         AAfilledRoundedRect(self.screen,
@@ -413,15 +454,10 @@ class Board:
 
 
 
+        # Draw all tiles
         for y in range(self.height):
             for x in range(self.width):
                 self.tiles[y][x].draw(x, y)
-
-        for i, piece in enumerate(self.piece_queue):
-            if len(piece.pieces) == 4:
-                piece.x = self.width + 0.5 
-            piece.y = i*4 + 1
-            piece.draw()
 
         self.current_piece.draw()
 
@@ -473,6 +509,9 @@ def main():
                 if event.key == pygame.K_r:
                     board.rotate_cw()
                     buttons_pressed['r'] = 0
+                if event.key == pygame.K_SPACE:
+                    board.hold()
+                    buttons_pressed['space'] = 0
             # Check for key ups
             if event.type == pygame.KEYUP:
                 if event.key == pygame.K_RIGHT:
@@ -487,6 +526,8 @@ def main():
                     buttons_pressed.pop('q')
                 if event.key == pygame.K_r:
                     buttons_pressed.pop('r')
+                if event.key == pygame.K_SPACE:
+                    buttons_pressed.pop('space')
 
         key=pygame.key.get_pressed()
         if buttons_pressed.get('left', 0)  > int(FRAMERATE/5) and key[pygame.K_LEFT]:
@@ -495,9 +536,6 @@ def main():
             board.move_piece_right()
         if buttons_pressed.get('down', 0)  > int(FRAMERATE/6) and key[pygame.K_DOWN]:
             board.move_piece_down()
-        if buttons_pressed.get('up', 0)  > int(FRAMERATE/3) and key[pygame.K_UP]:
-            #board.hard_drop()
-            pass
 
         # Tick key counters
         for button in buttons_pressed:
