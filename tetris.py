@@ -3,6 +3,7 @@ import sys
 import random
 import time
 import os
+import copy
 
 def AAfilledRoundedRect(surface,rect,color,radius=0.05):
 
@@ -73,7 +74,7 @@ class Block:
     def is_solid(self):
         return self.solid
 
-    def draw(self, x, y, tile_size = None):
+    def draw(self, x, y, tile_size = None, opacity=255):
         if not tile_size:
             tile_size = self.tile_size
         draw_x = self.board.x + x*tile_size
@@ -84,17 +85,18 @@ class Block:
             pygame.draw.rect(self.board.screen, self.linecolor, [draw_x, draw_y, tile_size,
                                                      tile_size], 1)
         else:
-            pygame.draw.polygon(self.board.screen, self.color, 
-                                [[draw_x + 1, draw_y + 1],
-                                 [draw_x + tile_size - 1, draw_y + 1],
-                                 [draw_x + 1, draw_y + tile_size - 1]
+            surf = pygame.Surface((tile_size, tile_size), pygame.SRCALPHA)
+            pygame.draw.polygon(surf, self.color + (opacity,), 
+                                [[1, 1],
+                                 [tile_size-1, 1],
+                                 [1, tile_size-1]
                                  ], 0)
-            pygame.draw.polygon(self.board.screen, add_tint(self.color), 
-                                [[draw_x + tile_size - 1, draw_y + 1],
-                                 [draw_x+tile_size - 1,
-                                  draw_y+tile_size - 1],
-                                 [draw_x + 1, draw_y + tile_size - 1]
+            pygame.draw.polygon(surf, add_tint(self.color) + (opacity,), 
+                                [[tile_size-1, 1],
+                                 [tile_size-1, tile_size-1],
+                                 [1, tile_size-1]
                                  ], 0)
+            self.board.screen.blit(surf, [draw_x,draw_y])
             pygame.draw.rect(self.board.screen, self.linecolor, [draw_x, draw_y, tile_size,
                                                      tile_size], 1)
             
@@ -123,11 +125,12 @@ class Tetromino:
                 if self.pieces[y][x]:
                     yield (self.y + y, self.x + x)
 
-    def draw(self):
+    def draw(self, opacity=255):
         for y in range(len(self.pieces)):
             for x in range(len(self.pieces)):
                 if self.pieces[y][x] and self.y + y >= 0:
-                    self.pieces[y][x].draw(self.x + x, self.y + y)
+                    self.pieces[y][x].draw(self.x + x, self.y + y,
+                                           opacity=opacity)
 
 
 class I_Piece(Tetromino):
@@ -187,7 +190,7 @@ class T_Piece(Tetromino):
 
 class Board:
     def __init__(self, x, y, width, height, tile_size, screen, starting_level,
-                 queue_length = 1):
+                 queue_length = 1, ghost=True):
         self.x = x
         self.y = y
         self.width = width
@@ -199,6 +202,9 @@ class Board:
         self.level = starting_level
         self.lines = 0
         self.score = 0
+
+
+        self.ghost = ghost
 
 
         self.held = False
@@ -358,8 +364,10 @@ class Board:
             self.current_piece.y = -4
         
 
-    def would_piece_fit(self, offset_x, offset_y):
-        for (y,x) in self.current_piece.get_piece_locations():
+    def would_piece_fit(self, offset_x, offset_y, piece=None):
+        if not piece:
+            piece=self.current_piece
+        for (y,x) in piece.get_piece_locations():
             if x + offset_x >= self.width or x + offset_x < 0:
                 return False
             if y + offset_y < 0:
@@ -460,6 +468,15 @@ class Board:
                 self.tiles[y][x].draw(x, y)
 
         self.current_piece.draw()
+
+        if self.ghost:
+            ghost_piece = copy.copy(self.current_piece)
+            offset_y = 0
+            while self.would_piece_fit(0, offset_y+1, ghost_piece):
+                offset_y += 1
+            ghost_piece.y += offset_y
+            ghost_piece.draw(opacity=80)
+
 
 
 
