@@ -2,6 +2,46 @@ import pygame
 import sys
 import random
 import time
+import os
+
+def AAfilledRoundedRect(surface,rect,color,radius=0.05):
+
+    """
+    AAfilledRoundedRect(surface,rect,color,radius=0.4)
+
+    surface : destination
+    rect    : rectangle
+    color   : rgb or rgba
+    radius  : 0 <= radius <= 1
+    """
+
+    rect         = pygame.Rect(rect)
+    color        = pygame.Color(*color)
+    alpha        = color.a
+    color.a      = 0
+    pos          = rect.topleft
+    rect.topleft = 0,0
+    rectangle    = pygame.Surface(rect.size,pygame.SRCALPHA)
+
+    circle       = pygame.Surface([min(rect.size)*3]*2,pygame.SRCALPHA)
+    pygame.draw.ellipse(circle,(0,0,0),circle.get_rect(),0)
+    circle       = pygame.transform.smoothscale(circle,[int(min(rect.size)*radius)]*2)
+
+    radius              = rectangle.blit(circle,(0,0))
+    radius.bottomright  = rect.bottomright
+    rectangle.blit(circle,radius)
+    radius.topright     = rect.topright
+    rectangle.blit(circle,radius)
+    radius.bottomleft   = rect.bottomleft
+    rectangle.blit(circle,radius)
+
+    rectangle.fill((0,0,0),rect.inflate(-radius.w,0))
+    rectangle.fill((0,0,0),rect.inflate(0,-radius.h))
+
+    rectangle.fill(color,special_flags=pygame.BLEND_RGBA_MAX)
+    rectangle.fill((255,255,255,alpha),special_flags=pygame.BLEND_RGBA_MIN)
+
+    return surface.blit(rectangle,pos)
 
 def random_color():
     colors = [(128, 217, 221),
@@ -33,28 +73,30 @@ class Block:
     def is_solid(self):
         return self.solid
 
-    def draw(self, x, y):
-        draw_x = self.board.x + x*self.tile_size
-        draw_y = self.board.y + y*self.tile_size
+    def draw(self, x, y, tile_size = None):
+        if not tile_size:
+            tile_size = self.tile_size
+        draw_x = self.board.x + x*tile_size
+        draw_y = self.board.y + y*tile_size
         if not self.is_solid():
-            pygame.draw.rect(self.board.screen, self.color, [draw_x, draw_y, self.tile_size,
-                                                      self.tile_size])
-            pygame.draw.rect(self.board.screen, self.linecolor, [draw_x, draw_y, self.tile_size,
-                                                     self.tile_size], 1)
+            pygame.draw.rect(self.board.screen, self.color, [draw_x, draw_y, tile_size,
+                                                      tile_size])
+            pygame.draw.rect(self.board.screen, self.linecolor, [draw_x, draw_y, tile_size,
+                                                     tile_size], 1)
         else:
             pygame.draw.polygon(self.board.screen, self.color, 
                                 [[draw_x + 1, draw_y + 1],
-                                 [draw_x + self.tile_size - 1, draw_y + 1],
-                                 [draw_x + 1, draw_y + self.tile_size - 1]
+                                 [draw_x + tile_size - 1, draw_y + 1],
+                                 [draw_x + 1, draw_y + tile_size - 1]
                                  ], 0)
             pygame.draw.polygon(self.board.screen, add_tint(self.color), 
-                                [[draw_x + self.tile_size - 1, draw_y + 1],
-                                 [draw_x+self.tile_size - 1,
-                                  draw_y+self.tile_size - 1],
-                                 [draw_x + 1, draw_y + self.tile_size - 1]
+                                [[draw_x + tile_size - 1, draw_y + 1],
+                                 [draw_x+tile_size - 1,
+                                  draw_y+tile_size - 1],
+                                 [draw_x + 1, draw_y + tile_size - 1]
                                  ], 0)
-            pygame.draw.rect(self.board.screen, self.linecolor, [draw_x, draw_y, self.tile_size,
-                                                     self.tile_size], 1)
+            pygame.draw.rect(self.board.screen, self.linecolor, [draw_x, draw_y, tile_size,
+                                                     tile_size], 1)
             
 
 class Tetromino:
@@ -91,7 +133,8 @@ class Tetromino:
 class I_Piece(Tetromino):
     def __init__(self, x, y, color, tile_size, board):
         Tetromino.__init__(self, x, y, color,tile_size, board)
-        self.pieces = [[None, None, Block(color, tile_size, board, solid=True), None, None]]*5
+        self.pieces = [ [None, None, None, None, None] ] + [[None, None, Block(color, tile_size, board,
+                                            solid=True), None, None]]*4
 class L_Piece(Tetromino):
     def __init__(self, x, y, color, tile_size, board):
         Tetromino.__init__(self, x, y, color,tile_size, board)
@@ -143,7 +186,8 @@ class T_Piece(Tetromino):
                        [None, None, None, None, None]]
 
 class Board:
-    def __init__(self, x, y, width, height, tile_size, screen, starting_level):
+    def __init__(self, x, y, width, height, tile_size, screen, starting_level,
+                 queue_length = 1):
         self.x = x
         self.y = y
         self.width = width
@@ -153,6 +197,11 @@ class Board:
 
         self.ticks = 0
         self.level = starting_level
+        self.lines = 0
+        self.score = 0
+
+
+        self.lines_until_level_up = 10
 
         self.tile_size = tile_size
 
@@ -160,12 +209,17 @@ class Board:
 
         self.screen = screen
 
+
+        self.piece_queue = []
+        while len(self.piece_queue) != queue_length:
+            self.queue_new_piece()
+
         self.get_new_piece()
 
     def update(self):
         self.ticks += 1
 
-        if self.ticks*10 > 200 - (self.level - 1)*11:
+        if self.ticks*10 > 200 - (self.level - 1)*13:
             self.ticks = 0
             if self.would_piece_fit(0, 1):
                 self.current_piece.drop()
@@ -191,11 +245,35 @@ class Board:
     def rotate_cw(self):
         self.current_piece.rotate_cw()
         if not self.would_piece_fit(0,0):
-           self.current_piece.rotate_ccw()
+            if isinstance(self.current_piece, I_Piece):
+                shift = 2
+            else:
+                shift = 1
+            ## Check if would fit by moving it to left
+            if self.would_piece_fit(-1*shift, 0):
+                self.current_piece.x -= shift
+                return
+            ## Check if would fit by moving it to right
+            if self.would_piece_fit(shift, 0):
+                self.current_piece.x += shift
+                return
+            self.current_piece.rotate_ccw()
 
     def rotate_ccw(self):
         self.current_piece.rotate_ccw()
         if not self.would_piece_fit(0,0):
+            if isinstance(self.current_piece, I_Piece):
+                shift = 2
+            else:
+                shift = 1
+            ## Check if would fit by moving it to left
+            if self.would_piece_fit(-1*shift, 0):
+                self.current_piece.x -= shift
+                return
+            ## Check if would fit by moving it to right
+            if self.would_piece_fit(shift, 0):
+                self.current_piece.x += shift
+                return
             self.current_piece.rotate_cw()
 
 
@@ -206,6 +284,7 @@ class Board:
         self.get_new_piece()
 
     def lock_piece(self):
+        self.score += 10
         lines_cleared = []
         lines_to_check = set()
         for (y,x) in self.current_piece.get_piece_locations():
@@ -229,18 +308,35 @@ class Board:
             self.clear_lines(lines_cleared)
 
     def clear_lines(self, lines):
+        self.score += self.level*(len(lines))*10
+        self.lines += len(lines)
+        self.lines_until_level_up -= len(lines)
+        if self.lines_until_level_up <= 0:
+            self.lines_until_level_up = 10
+            self.level += 1
         for line in lines:
             self.tiles.pop(line)
             self.tiles = [ [Block((109, 110, 112), self.tile_size, self)] *
                           self.width ] + self.tiles
 
 
-    def get_new_piece(self):
+    def queue_new_piece(self):
         possible_pieces = [L_Piece, J_Piece, I_Piece, S_Piece, Z_Piece, T_Piece,
                             O_Piece]
         piece = random.choice(possible_pieces)
-        self.current_piece = piece(3, -4, random_color(), self.tile_size,
-                                     self)
+        self.piece_queue.append(piece(self.width, None, random_color(),
+                                      self.tile_size,
+                                     self))
+
+    def get_new_piece(self):
+        self.current_piece = self.piece_queue.pop(0)
+        self.current_piece.x = 3
+        if len(self.current_piece.pieces) == 4:
+            self.current_piece.y = -3
+        else:
+            self.current_piece.y = -4
+        self.current_piece.tile_size = self.tile_size
+        self.queue_new_piece()
 
     def would_piece_fit(self, offset_x, offset_y):
         for (y,x) in self.current_piece.get_piece_locations():
@@ -257,10 +353,75 @@ class Board:
 
 
     def draw(self):
+        info_y = self.y + self.tile_size*(self.height) + 20
+        font_size = 20
+
+        # Draw Border
+        AAfilledRoundedRect(self.screen, (self.x-6,
+                                          self.y-6,self.width*self.tile_size +
+                                          12,
+                                             self.height*self.tile_size + 12),
+                            (191, 205, 224))
+
+        # Draw next piece box
+        AAfilledRoundedRect(self.screen,
+                            (self.x + self.tile_size*(self.width),
+                             self.y - 6,
+                             self.tile_size*5,
+                             self.tile_size*7),
+                            (191, 205, 224)
+                            )
+        myfont = pygame.font.Font(os.path.join('NotoSans-Regular.ttf'),
+                                  font_size)
+        text = myfont.render('Next Piece', True, (0,0,0))
+        self.screen.blit(text, (self.x + self.tile_size*(self.width) + 30,
+                           self.y + 5)
+                    )
+        # Draw hold box
+        AAfilledRoundedRect(self.screen,
+                            (self.x + self.tile_size*(self.width),
+                             self.y + self.tile_size*(self.height-7),
+                             self.tile_size*5,
+                             self.tile_size*7 + 6),
+                            (191, 205, 224)
+                            )
+        text = myfont.render('Hold', True, (0,0,0))
+        self.screen.blit(text, (self.x + self.tile_size*(self.width) + 55,
+                           self.y + self.tile_size*(self.height - 7) + 5)
+                    )
+
+        # Draw info box
+        AAfilledRoundedRect(self.screen,
+                            (self.x - 6,
+                             self.y + self.tile_size*(self.height) + 12,
+                             self.screen.get_width() - self.x,
+                             50),
+                            (191, 205, 224)
+                            )
+        text = myfont.render('Level: ' + str(self.level), True, (0,0,0))
+        self.screen.blit(text, (self.x + 5,
+                                info_y)
+                         )
+        text = myfont.render('Lines: ' + str(self.lines), True, (0,0,0))
+        self.screen.blit(text, (self.x + 110,
+                                info_y)
+                         )
+        text = myfont.render('Score: ' + str(self.score), True, (0,0,0))
+        self.screen.blit(text, (self.x + 220,
+                                info_y)
+                         )
+
+
 
         for y in range(self.height):
             for x in range(self.width):
                 self.tiles[y][x].draw(x, y)
+
+        for i, piece in enumerate(self.piece_queue):
+            if len(piece.pieces) == 4:
+                piece.x = self.width + 0.5 
+            piece.y = i*4 + 1
+            piece.draw()
 
         self.current_piece.draw()
 
@@ -274,11 +435,11 @@ def main():
     pygame.display.set_icon(logo)
     pygame.display.set_caption("pyTris")
 
-    screen = pygame.display.set_mode((500, 800))
+    screen = pygame.display.set_mode((465, 800))
 
     running = True
 
-    board = Board(10, 10, 10, 24, 30, screen, 10)
+    board = Board(10, 10, 10, 24, 30, screen, 1)
 
     FRAMERATE = 30
     clock = pygame.time.Clock()
@@ -328,11 +489,11 @@ def main():
                     buttons_pressed.pop('r')
 
         key=pygame.key.get_pressed()
-        if buttons_pressed.get('left', 0)  > int(FRAMERATE/3) and key[pygame.K_LEFT]:
+        if buttons_pressed.get('left', 0)  > int(FRAMERATE/5) and key[pygame.K_LEFT]:
             board.move_piece_left()
-        if buttons_pressed.get('right', 0)  > int(FRAMERATE/3) and key[pygame.K_RIGHT]:
+        if buttons_pressed.get('right', 0)  > int(FRAMERATE/5) and key[pygame.K_RIGHT]:
             board.move_piece_right()
-        if buttons_pressed.get('down', 0)  > int(FRAMERATE/3) and key[pygame.K_DOWN]:
+        if buttons_pressed.get('down', 0)  > int(FRAMERATE/6) and key[pygame.K_DOWN]:
             board.move_piece_down()
         if buttons_pressed.get('up', 0)  > int(FRAMERATE/3) and key[pygame.K_UP]:
             #board.hard_drop()
